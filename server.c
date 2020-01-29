@@ -11,7 +11,7 @@
 #include <sys/wait.h>
 #include <signal.h>
 
-#define PORT "3490"  // the port users will be connecting to
+#define PORT "8000"  // the port users will be connecting to
 
 #define BACKLOG 10	 // how many pending connections queue will hold
 
@@ -118,16 +118,107 @@ int main(int argc, char *argv[])
 			s, sizeof s);
 		printf("server: got connection from %s\n", s);
 
+		
 		if (!fork()) { // this is the child process
 			close(sockfd); // child doesn't need the listener
-			if (send(new_fd, "Hello, world!", 13, 0) == -1)
-				perror("send");
-			close(new_fd);
-			exit(0);
-		}
-		close(new_fd);  // parent doesn't need this
-	}
-
-	return 0;
+			//Process request message
+            char *filename;
+            char buffer[512]; //Read 512 characters every time
+            bzero(buffer,512);
+            if (read(new_fd, buffer, 511) < 0)//Reading message to buffer
+                fprintf(stderr, "Socket reading error\n");
+            printf("HTTP Request Message:\n%s\n", buffer);
+            
+            //Tokenize the received message
+            const char space[2] = " ";
+            filename = strtok(buffer, space);
+            filename = strtok(NULL, space);
+            //Delete first character '/'
+            filename++;
+            
+            if(strlen(filename)<=0) filename = "\0";
+            printf("Request file: %s\n", filename);
+            
+            
+            //----------------- Serve Files ------------------
+            char* err404 = "HTTP/1.1 404 Not Found\r\n\r\n";
+            char* err404_html = "<h1>Error 404: File Not Found!</h1> <br><br>";
+            if(strncmp(filename, "\0", 1) == 0)
+            {
+                send(new_fd, err404, strlen(err404), 0);
+                send(new_fd, err404_html, strlen(err404_html), 0);
+                printf("No file specified\n");
+                close(new_fd);
+                exit(0);
+            }
+            
+            // space_replace(filename);
+            
+            // FILE *fd = fopen(filename, "r");
+            // if (fd==NULL)
+            // {
+            //     send(newfd, err404, strlen(err404), 0);
+            //     send(newfd, err404_html, strlen(err404_html), 0);
+            //     printf("File not found\n");
+            //     close(newfd);
+            //     exit(0);
+            // }
+            
+            // char *content = NULL;
+            // if (fseek(fd, 0L, SEEK_END) == 0)
+            // {
+            //     long file_size = ftell(fd);
+            //     if (file_size == -1)
+            //     {
+            //         send(newfd, err404, strlen(err404), 0);
+            //         send(newfd, err404_html, strlen(err404_html), 0);
+            //         printf("File size error\n");
+            //         close(newfd);
+            //         exit(0);
+            //     }
+                
+            //     //allocate content buffer
+            //     content = malloc(sizeof(char) * (file_size + 1));
+                
+            //     if (fseek(fd, 0L, SEEK_SET) != 0)
+            //     {
+            //         send(newfd, err404, strlen(err404), 0);
+            //         send(newfd, err404_html, strlen(err404_html), 0);
+            //         printf("File size error\n");
+            //         close(newfd);
+            //         exit(0);
+            //     }
+                
+            //     //read content to buffer
+            //     size_t content_size = fread(content, sizeof(char), file_size, fd);
+                
+            //     //check read process
+            //     if (content_size == 0)
+            //     {
+            //         send(newfd, err404, strlen(err404), 0);
+            //         send(newfd, err404_html, strlen(err404_html), 0);
+            //         printf("File size error\n");
+            //         close(newfd);
+            //         exit(0);
+            //     }
+                
+            //     //set terminal character
+            //     content[content_size] = '\0';
+            //     response(newfd, filename, content_size);
+            //     send(newfd, content, content_size, 0);
+            //     printf("File served: \"%s\"\n\n", filename);
+            // }
+            
+            // // close file and free dynamically allocated file source
+            // fclose(fd);
+            // free(content);
+            
+            close(new_fd);
+            exit(0);
+        }
+        close(new_fd);
+    }
+    return 0;
 }
+
 
