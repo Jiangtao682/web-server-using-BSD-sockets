@@ -25,14 +25,36 @@
 
 #define STATUS_200 "HTTP/1.1 200 OK\r\n"
 #define STATUS_404 "HTTP/1.1 404 Not Found\r\n\r\n"
-#define ERROR_404_HTML "<h1>Error 404: File Not Found!</h1> <br><br> <h3>File requested must be in same directory as server.</h3>"
+#define ERROR_404_HTML "<h1>Error 404: File Not Found!</h1> <br><br>"
 
 
 char *request_process(int);
 void prepareFile (int, char *);
 void generateResponseMessage(int, char *, size_t);
 
-
+void space_replace(char *filename)
+{
+    char buffer[1024] = {0};
+    char *insert_point = &buffer[0];
+    const char *tmp = filename;
+    
+    while (1) {
+        const char *p = strstr(tmp, "%20");
+        if (p == NULL) {
+            strcpy(insert_point, tmp);
+            break;
+        }
+        memcpy(insert_point, tmp, p - tmp);
+        insert_point += p - tmp;
+        memcpy(insert_point, " ", 1);
+        insert_point += 1;
+        tmp = p + 3;
+    }
+    // write altered string back to target
+    strcpy(filename, buffer);
+	printf("filename in strip space: %s\n", filename);
+	
+}
 
 void sigchld_handler(int s)
 {
@@ -143,8 +165,10 @@ int main(int argc, char *argv[])
 			//Process request message
             char *filename;
 			filename = request_process(newfd);
+			// printf("filename before strip space: %s\n", filename);
+			// space_replace(filename);
+			// printf("filename after strip space: %s\n", filename);
 			prepareFile(newfd, filename);
-            
             close(newfd);
             exit(0);
         }
@@ -190,6 +214,7 @@ void prepareFile(int sock, char *filename)
 	char *source = NULL;
 	char *temp_filename = malloc(sizeof(char) * (strlen(filename) + 1));
     strcpy(temp_filename, filename);
+	space_replace(temp_filename);
 	FILE *fp = fopen(temp_filename, "r");
 
 	if (fp==NULL)
@@ -284,7 +309,7 @@ void generateResponseMessage(int sock, char *filename, size_t fileLength)
 	strcat(date, "\r\n");
 
 	// header server
-	char *server = "Server: NathanTung/1.0\r\n";
+	char *server = "Server: Jiangtao's VM \r\n";
 
 	// header last-modified
 	struct tm* lmclock;
