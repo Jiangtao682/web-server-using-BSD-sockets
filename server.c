@@ -12,6 +12,7 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <ctype.h>
 
 #define PORT "8000"   // the port users will be connecting to
 #define BACKLOG 10	  // how many pending connections queue will hold
@@ -26,18 +27,10 @@
 #define STATUS_404 "HTTP/1.1 404 Not Found\r\n\r\n"
 #define ERROR_404_HTML "<h1>Error 404: File Not Found!</h1> <br><br> <h3>File requested must be in same directory as server.</h3>"
 
-typedef enum
-{
-	html, txt, jpeg, jpg, gif
-}
-extension;
 
 char *request_process(int);
 void prepareFile (int, char *);
 void generateResponseMessage(int, char *, size_t);
-extension getFileType(char *);
-char *replace(const char *, const char *, const char *);
-char *replace2(const char *, const char *, const char *);
 
 
 
@@ -151,95 +144,6 @@ int main(int argc, char *argv[])
             char *filename;
 			filename = request_process(newfd);
 			prepareFile(newfd, filename);
-            // char buffer[512]; //Read 512 characters every time
-            // bzero(buffer,512); // clear whole mem space
-            // if (read(newfd, buffer, 511) < 0)//Reading message to buffer
-            //     fprintf(stderr, "Socket reading error\n");
-            // printf("HTTP Request Message:\n%s\n", buffer);
-            
-            // //Tokenize the received message
-            // const char space[2] = " ";
-            // filename = strtok(buffer, space);
-            // filename = strtok(NULL, space);
-            // //Delete first character '/'
-            // filename++;
-            
-            // if(strlen(filename)<=0) filename = "\0";
-            // printf("Request file: %s\n", filename);
-            
-            
-            // //----------------- Serve Files ------------------
-            // char* err404 = "HTTP/1.1 404 Not Found\r\n\r\n";
-            // char* err404_html = "<h1>Error 404: File Not Found!</h1> <br><br>";
-            // if(strncmp(filename, "\0", 1) == 0)
-            // {
-            //     send(newfd, err404, strlen(err404), 0);
-            //     send(newfd, err404_html, strlen(err404_html), 0);
-            //     printf("No file specified\n");
-            //     close(newfd);
-            //     exit(0);
-            // }
-            
-            // space_replace(filename);
-            
-            // FILE *fd = fopen(filename, "r");
-            // if (fd==NULL)
-            // {
-            //     send(newfd, err404, strlen(err404), 0);
-            //     send(newfd, err404_html, strlen(err404_html), 0);
-            //     printf("File not found\n");
-            //     close(newfd);
-            //     exit(0);
-            // }
-            
-            // char *content = NULL;
-            // if (fseek(fd, 0L, SEEK_END) == 0)
-            // {
-            //     long file_size = ftell(fd);
-            //     if (file_size == -1)
-            //     {
-            //         send(newfd, err404, strlen(err404), 0);
-            //         send(newfd, err404_html, strlen(err404_html), 0);
-            //         printf("File size error\n");
-            //         close(newfd);
-            //         exit(0);
-            //     }
-                
-            //     //allocate content buffer
-            //     content = malloc(sizeof(char) * (file_size + 1));
-                
-            //     if (fseek(fd, 0L, SEEK_SET) != 0)
-            //     {
-            //         send(newfd, err404, strlen(err404), 0);
-            //         send(newfd, err404_html, strlen(err404_html), 0);
-            //         printf("File size error\n");
-            //         close(newfd);
-            //         exit(0);
-            //     }
-                
-            //     //read content to buffer
-            //     size_t content_size = fread(content, sizeof(char), file_size, fd);
-                
-            //     //check read process
-            //     if (content_size == 0)
-            //     {
-            //         send(newfd, err404, strlen(err404), 0);
-            //         send(newfd, err404_html, strlen(err404_html), 0);
-            //         printf("File size error\n");
-            //         close(newfd);
-            //         exit(0);
-            //     }
-                
-            //     //set terminal character
-            //     content[content_size] = '\0';
-            //     response(newfd, filename, content_size);
-            //     send(newfd, content, content_size, 0);
-            //     printf("File served: \"%s\"\n\n", filename);
-            // }
-            
-            // // close file and free dynamically allocated file source
-            // fclose(fd);
-            // free(content);
             
             close(newfd);
             exit(0);
@@ -257,9 +161,8 @@ char *request_process(int socket_fd)
 	if (read(socket_fd, buffer, 511) < 0)//Reading message to buffer
 		fprintf(stderr, "Socket reading error\n");
 	printf("HTTP Request Message:\n%s\n", buffer);
-	
-	//Tokenize the received message
 	char *filename;
+	//Tokenize the received message
 	const char space[2] = " ";
 	filename = strtok(buffer, space);
 	filename = strtok(NULL, space);
@@ -285,7 +188,9 @@ void prepareFile(int sock, char *filename)
 
 	// create source buffer to fopen and fread designated file
 	char *source = NULL;
-	FILE *fp = fopen(filename, "r");
+	char *temp_filename = malloc(sizeof(char) * (strlen(filename) + 1));
+    strcpy(temp_filename, filename);
+	FILE *fp = fopen(temp_filename, "r");
 
 	if (fp==NULL)
 	{
@@ -339,12 +244,12 @@ void prepareFile(int sock, char *filename)
 		source[sourceLength] = '\0';
 		
 		// send HTTP response header to client browser
-		generateResponseMessage(sock, filename, sourceLength);
+		generateResponseMessage(sock, temp_filename, sourceLength);
 
 		// send file to client browser
 		send(sock, source, sourceLength, 0);
 
-		printf("File \"%s\" served to client!\n\n", filename);
+		printf("File \"%s\" served to client!\n\n", temp_filename);
 	}
 
 	// close file and free dynamically allocated file source
@@ -401,36 +306,33 @@ void generateResponseMessage(int sock, char *filename, size_t fileLength)
 	strcat(contentLength, "\r\n");
 
 	// header content-type
-	extension ext = getFileType(filename);
-	char *contentType;
-	contentType = TXT;
-	if(ext==html) contentType = HTML;
-	if(ext==jpeg) contentType = JPEG;
-	if(ext==jpg) contentType = JPG;
-	if(ext==gif) contentType = GIF;
+	char* content_type = TXT;
+    char *tmp = malloc(sizeof(char) * (strlen(filename) + 1));
+    strcpy(tmp, filename);
+    int i = 0;
+    while (tmp[i]) {
+        tmp[i] = tolower(tmp[i]);
+        i++;
+    }
+    if (strstr(tmp, ".html") != NULL)
+        content_type = HTML;
+    else if (strstr(tmp, ".txt") != NULL)
+        content_type = TXT;
+    else if (strstr(tmp, ".jpeg") != NULL)
+        content_type = JPEG;
+    else if (strstr(tmp, ".jpg") != NULL)
+        content_type = JPG;
+    else if (strstr(tmp, ".gif") != NULL)
+        content_type = GIF;
 
-	int offset = strlen(status);
-	memcpy(message, status, offset);
-
-	memcpy(message+offset, connection, strlen(connection));
-	offset+=strlen(connection);
-
-	memcpy(message+offset, date, strlen(date));
-	offset+=strlen(date);
-
-	memcpy(message+offset, server, strlen(server));
-	offset+=strlen(server);
-
-	memcpy(message+offset, lastModified, strlen(lastModified));
-	offset+=strlen(lastModified);
-
-	memcpy(message+offset, contentLength, strlen(contentLength));
-	offset+=strlen(contentLength);
-
-	memcpy(message+offset, contentType, strlen(contentType));
-	offset+=strlen(contentType);
-
-	memcpy(message+offset, "\r\n\0", 3);
+	strcat(message, status);
+    strcat(message, connection);
+    strcat(message, date);
+    strcat(message, server);
+    strcat(message, lastModified);
+    strcat(message, contentLength);
+    strcat(message, content_type);
+    strcat(message, "\r\n\0");
 
 	// send response to client browser as header lines
 	send(sock, message, strlen(message), 0);
@@ -438,19 +340,4 @@ void generateResponseMessage(int sock, char *filename, size_t fileLength)
 	// send copy of response to console
 	printf("HTTP RESPONSE MESSAGE:\n%s\n", message);
 }
-
-
-// return file extension
-extension getFileType(char *filename)
-{
-	if (strstr(filename, ".html") != NULL) return html;
-	if (strstr(filename, ".txt") != NULL) return txt;
-	if (strstr(filename, ".jpeg") != NULL) return jpeg;
-	if (strstr(filename, ".jpg") != NULL) return jpg;
-	if (strstr(filename, ".gif") != NULL) return gif;
-
-	// in case of client error, assume plaintext
-	return txt;
-}
-
 
