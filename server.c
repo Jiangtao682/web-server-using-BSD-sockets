@@ -25,14 +25,14 @@
 #define JPEG "Content-Type: image/jpeg\r\n"
 
 
-#define STATUS_200 "HTTP/1.1 200 OK\r\n"
+#define S_200 "HTTP/1.1 200 OK\r\n"
 #define S_404 "HTTP/1.1 404 Not Found\r\n\r\n"
 #define ERROR_HTML "<h1>Error 404: File Not Found!</h1> <br><br>"
 
 
 char *request_process(int);
 void prepareFile (int, char *);
-void generateResponseMessage(int, char *, size_t);
+void createHttpMassage(int, char *, size_t);
 
 void send_error404(int socket_fd_new)
 {
@@ -44,18 +44,18 @@ void subst_space(char *filename)
 {
     char buffer[1024] = {0};
     char *insert_point = &buffer[0];
-    const char *tmp = filename;
-    while (1) {
-        const char *p = strstr(tmp, "%20");
+    const char *dummy = filename;
+    for (int i=0; i< strlen(dummy); i = i+1) {
+        const char *p = strstr(dummy, "%20");
         if (p == NULL) {
-            strcpy(insert_point, tmp);
+            strcpy(insert_point, dummy);
             break;
         }
-        memcpy(insert_point, tmp, p - tmp);
-        insert_point += p - tmp;
+        memcpy(insert_point, dummy, p - dummy);
+        insert_point += p - dummy;
         memcpy(insert_point, " ", 1);
         insert_point += 1;
-        tmp = p + 3;
+        dummy = p + 3;
     }
     strcpy(filename, buffer);
 	printf("filename in strip space: %s\n", filename);
@@ -98,9 +98,9 @@ int main(int argc, char *argv[])
 	int rv;
 
 	memset(&hints, 0, sizeof hints);  //make sure the sruct is empty
-	hints.ai_family = AF_UNSPEC; //don't care ipv4 or 6
+	hints.ai_family = AF_UNSPEC; //both ipv4 and ipv6
 	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE; // fill in my ip for me
+	hints.ai_flags = AI_PASSIVE; // 
 
 	if ((rv = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
@@ -190,68 +190,66 @@ char *request_process(int sock_fd)
 	if (read(sock_fd, buffer, 511) < 0)
 		fprintf(stderr, "Socket reading error\n");
 	printf("HTTP Request Message:\n%s\n", buffer);
-	char *filename;
-	//Tokenize the received message
+	char *fn;
+	//extract file name from the discriptor file
 	const char space[2] = " ";
-	filename = strtok(buffer, space);
-	filename = strtok(NULL, space);
-	//Delete first character '/'
-	filename++;
+	fn = strtok(buffer, space);
+	fn = strtok(NULL, space);
+	//remove  '/'
+	fn++;
 	
-	if(strlen(filename)<=0) filename = "\0";
-	printf("Request file: %s\n", filename);
+	if(strlen(fn)<=0) fn = "\0";
+	printf("HTTP Request file name: %s\n", fn);
 
-	return filename;
+	return fn;
 }
 
 void prepareFile(int socket_fd_new, char *filename)
 {
 	if(filename=="\0")
 	{
-		// send 404 error status then display error page
 		send_error404(socket_fd_new);
 		printf("Error: no file specified!\n");
 		return;
 	}
-
-	// create source buffer to fopen and fread designated file
-	char *source = NULL;
+	// initial buffer to store file in it and then send to client.
+	char *fileBuffer = NULL;
 	char *temp_filename = malloc(sizeof(char) * (strlen(filename) + 1));
     strcpy(temp_filename, filename);
 	subst_space(temp_filename);
-	FILE *fp = fopen(temp_filename, "r");
+	FILE *filePointer = fopen(temp_filename, "r");
 
-	if (fp==NULL)
+	if (filePointer==NULL)
 	{
 		send_error404(socket_fd_new);
 		printf("Error: file not found!\n");
 		return;
 	}
 
-	if (fseek(fp, 0L, SEEK_END) == 0)
+	if (fseek(filePointer, 0L, SEEK_END) == 0)
 	{
-		// get file size
-		long fsize = ftell(fp);
-		if (fsize == -1)
+		// point to the end of the file and get file size
+		long fileSize = ftell(filePointer);
+		if (fileSize == -1)
 		{
 			send_error404(socket_fd_new);
 			printf("File size error!\n");
 			return;
 		}
 		// initial buffer to store file contents
-		source = malloc(sizeof(char) * (fsize + 1));
+		fileBuffer = malloc(sizeof(char) * (fileSize + 1));
 
-		// return to front of file
-		if (fseek(fp, 0L, SEEK_SET) != 0)
+		// point to the beginning of file
+		if (fseek(filePointer, 0L, SEEK_SET) != 0)
 		{
 			send_error404(socket_fd_new);
 			printf("File size error!\n");
 			return;
 		}
 
-		size_t readFileLength = fread(source, sizeof(char), fsize, fp);
+		size_t readFileLength = fread(fileBuffer, sizeof(char), fileSize, filePointer);
 
-		// check file source for fread errors
+		// when the file length is 0, return 404 error page
 		if (readFileLength == 0)
 		{
 			send_error404(socket_fd_new);
@@ -259,97 +257,93 @@ void prepareFile(int socket_fd_new, char *filename)
 			return;
 		}
 
-		// end the source
-		source[readFileLength] = '\0';
-		// send HTTP response header to client browser
-		generateResponseMessage(socket_fd_new, temp_filename, readFileLength);
-		// send file to client browser
-		send(socket_fd_new, source, readFileLength, 0);
+		// end the buffer
+		fileBuffer[readFileLength] = '\0';
+		// send HTTP header to client's browser
+		createHttpMassage(socket_fd_new, temp_filename, readFileLength);
+		// send file 
+		send(socket_fd_new, fileBuffer, readFileLength, 0);
 		printf("File \"%s\" served to client!\n\n", temp_filename);
 	}
-
-	// close file and free dynamically allocated file source
-	fclose(fp);
-	free(source);
+	// close the file and free the buffer
+	fclose(filePointer);
+	free(fileBuffer);
 }
 
-void generateResponseMessage(int socket_fd_new, char *filename, size_t fileLength)
+void createHttpMassage(int socket_fd_new, char *filename, size_t fileLength)
 {
-	char message[512];
+	char httpMessage[512];
 
-	// header status
 	char *status; 
-	status = STATUS_200;
+	status = S_200; //connect success and  display 200 OK!
 	
-	// header connection
+	// get connection status
 	char *connection = "Connection: close\r\n";
 
-	// header date
-	struct tm* dateclock;
-	time_t now;
-	time(&now);
-	dateclock = gmtime(&now);
-	char nowtime[35];
-	strftime(nowtime, 35, "%a, %d %b %Y %T %Z", dateclock);
-	//printf("Date time: %s\n", nowtime);
-	char date[50] = "Date: ";
-	strcat(date, nowtime);
+	// get date
+	struct tm* cur_tm_info;
+	time_t time_now;
+	time(&time_now);
+	cur_tm_info = gmtime(&time_now);
+	char time_record[52];
+	strftime(time_record, 52, "%a,%e %b %G %T GMT", cur_tm_info);
+	char date[70] = "Date: ";
+	strcat(date, time_record);
 	strcat(date, "\r\n");
 
-	// header server
+	// set server name
 	char *server = "Server: Jiangtao's VM \r\n";
 
-	// header last-modified
+	// get last-modified time
 	struct tm* lmnow;
 	struct stat attrib;
 	stat(filename, &attrib);
 	lmnow = gmtime(&(attrib.st_mtime));
 	char lmtime[35];
 	strftime(lmtime, 35, "%a, %d %b %Y %T %Z", lmnow);
-	//printf("Last modified time: %s\n", lmtime);
 	char lastModified[50] = "Last-Modified: ";
 	strcat(lastModified, lmtime);
 	strcat(lastModified, "\r\n");
 
-	// header content-length	
-	char contentLength[50] = "Content-Length: ";	
+	// get file content-length	
+	char Length[50] = "Content-Length: ";	
 	char len[10];
 	sprintf (len, "%d", (unsigned int)fileLength);
-	strcat(contentLength, len);
-	strcat(contentLength, "\r\n");
+	strcat(Length, len);
+	strcat(Length, "\r\n");
 
-	// header content-type
+	// get content-type
 	char* content_type = TXT;
-    char *tmp = malloc(sizeof(char) * (strlen(filename) + 1));
-    strcpy(tmp, filename);
+    char *tmp_name = malloc(sizeof(char) * (strlen(filename) + 1));
+    strcpy(tmp_name, filename);
     int i = 0;
-    while (tmp[i]) {
-        tmp[i] = tolower(tmp[i]);
+    while (tmp_name[i]) {
+        tmp_name[i] = tolower(tmp_name[i]);
         i++;
     }
-    if (strstr(tmp, ".html") != NULL)
+    if (strstr(tmp_name, ".html") != NULL)
         content_type = HTML;
-    else if (strstr(tmp, ".txt") != NULL)
+    else if (strstr(tmp_name, ".png") != NULL)
+        content_type = JPG;
+	else if (strstr(tmp_name, ".txt") != NULL)
         content_type = TXT;
-    else if (strstr(tmp, ".jpeg") != NULL)
-        content_type = JPEG;
-    else if (strstr(tmp, ".jpg") != NULL)
+    else if (strstr(tmp_name, ".jpg") != NULL)
         content_type = JPG;
-    else if (strstr(tmp, ".gif") != NULL)
+    else if (strstr(tmp_name, ".gif") != NULL)
         content_type = GIF;
-	else if (strstr(tmp, ".png") != NULL)
-        content_type = JPG;
+	else if (strstr(tmp_name, ".jpeg") != NULL)
+        content_type = JPEG;
+    
+	strcat(httpMessage, status);
+    strcat(httpMessage, connection);
+    strcat(httpMessage, date);
+    strcat(httpMessage, server);
+    strcat(httpMessage, lastModified);
+    strcat(httpMessage, Length);
+    strcat(httpMessage, content_type);
+    strcat(httpMessage, "\r\n\0");
 
-	strcat(message, status);
-    strcat(message, connection);
-    strcat(message, date);
-    strcat(message, server);
-    strcat(message, lastModified);
-    strcat(message, contentLength);
-    strcat(message, content_type);
-    strcat(message, "\r\n\0");
-
-	send(socket_fd_new, message, strlen(message), 0);
-	printf("HTTP Response Message:\n%s\n", message);
+	send(socket_fd_new, httpMessage, strlen(httpMessage), 0);
+	printf("HTTP Response Message:\n%s\n", httpMessage);
 }
 
