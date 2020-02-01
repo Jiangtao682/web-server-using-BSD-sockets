@@ -216,9 +216,13 @@ void prepareFile(int socket_fd_new, char *filename)
 	char *fileBuffer = NULL;
 	char *temp_filename = malloc(sizeof(char) * (strlen(filename) + 1));
     strcpy(temp_filename, filename);
+	for (int i=0; i< strlen(temp_filename); i = i+1){
+		temp_filename[i] = tolower(temp_filename[i]);
+	}
+
 	subst_space(temp_filename);
 	FILE *filePointer = fopen(temp_filename, "r");
-
+		
 	if (filePointer==NULL)
 	{
 		send_error404(socket_fd_new);
@@ -263,7 +267,7 @@ void prepareFile(int socket_fd_new, char *filename)
 		createHttpMassage(socket_fd_new, temp_filename, readFileLength);
 		// send file 
 		send(socket_fd_new, fileBuffer, readFileLength, 0);
-		printf("File \"%s\" served to client!\n\n", temp_filename);
+		printf("\"%s\" has been served to client!\n\n", temp_filename);
 	}
 	// close the file and free the buffer
 	fclose(filePointer);
@@ -316,11 +320,6 @@ void createHttpMassage(int socket_fd_new, char *filename, size_t fileLength)
 	char* content_type = TXT;
     char *tmp_name = malloc(sizeof(char) * (strlen(filename) + 1));
     strcpy(tmp_name, filename);
-    int i = 0;
-    while (tmp_name[i]) {
-        tmp_name[i] = tolower(tmp_name[i]);
-        i++;
-    }
     if (strstr(tmp_name, ".html") != NULL)
         content_type = HTML;
     else if (strstr(tmp_name, ".png") != NULL)
