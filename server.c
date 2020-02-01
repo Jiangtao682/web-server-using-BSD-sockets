@@ -23,54 +23,50 @@
 #define HTML "Content-Type: text/html\r\n"
 #define TXT "Content-Type: text/plain\r\n"
 #define JPEG "Content-Type: image/jpeg\r\n"
-
+//define content type 
 
 #define S_200 "HTTP/1.1 200 OK\r\n"
 #define S_404 "HTTP/1.1 404 Not Found\r\n\r\n"
 #define ERROR_HTML "<h1>Error 404: File Not Found!</h1> <br><br>"
-
+//define the error 404 html
 
 char *request_process(int);
 void prepareFile (int, char *);
 void createHttpMassage(int, char *, size_t);
 
+//send the error 404 page
 void send_error404(int socket_fd_new)
 {
 	send(socket_fd_new, S_404, strlen(S_404), 0);
 	send(socket_fd_new, ERROR_HTML, strlen(ERROR_HTML), 0);
 }
 
+//substitue %20 with ' '
 void subst_space(char *filename)
 {
     char buffer[1024] = {0};
-    char *insert_point = &buffer[0];
+    char *pointer = &buffer[0];
     const char *dummy = filename;
     for (int i=0; i< strlen(dummy); i = i+1) {
-        const char *p = strstr(dummy, "%20");
-        if (p == NULL) {
-            strcpy(insert_point, dummy);
+        const char *space_ptr = strstr(dummy, "%20");
+        if (space_ptr == NULL) {
+            strcpy(pointer, dummy);
             break;
         }
-        memcpy(insert_point, dummy, p - dummy);
-        insert_point += p - dummy;
-        memcpy(insert_point, " ", 1);
-        insert_point += 1;
-        dummy = p + 3;
+        memcpy(pointer, dummy, space_ptr - dummy);
+        pointer += space_ptr - dummy;
+        memcpy(pointer, " ", 1);
+        pointer = pointer + 1;
+        dummy = space_ptr + 3;
     }
     strcpy(filename, buffer);
-	printf("filename in strip space: %s\n", filename);
-	
 }
 
 void sigchld_handler(int s)
 {
-	(void)s; // quiet unused variable warning
-
-	// waitpid() might overwrite errno, so we save and restore it:
+	(void)s; 
 	int saved_errno = errno;
-
 	while(waitpid(-1, NULL, WNOHANG) > 0);
-
 	errno = saved_errno;
 }
 
@@ -197,8 +193,9 @@ char *request_process(int sock_fd)
 	fn = strtok(NULL, space);
 	//remove  '/'
 	fn++;
-	
+	//if file name is null, set it to 
 	if(strlen(fn)<=0) fn = "\0";
+	//print http information
 	printf("HTTP Request file name: %s\n", fn);
 
 	return fn;
@@ -206,20 +203,20 @@ char *request_process(int sock_fd)
 
 void prepareFile(int socket_fd_new, char *filename)
 {
-	if(filename=="\0")
+	if(strncmp(filename, "\0", 1) == 0)
 	{
 		send_error404(socket_fd_new);
-		printf("Error: no file specified!\n");
+		printf("file name is null!\n");
 		return;
 	}
 	// initial buffer to store file in it and then send to client.
+	// printf("filename before strip space: %s\n", filename);
 	char *fileBuffer = NULL;
 	char *temp_filename = malloc(sizeof(char) * (strlen(filename) + 1));
     strcpy(temp_filename, filename);
 	for (int i=0; i< strlen(temp_filename); i = i+1){
 		temp_filename[i] = tolower(temp_filename[i]);
 	}
-
 	subst_space(temp_filename);
 	FILE *filePointer = fopen(temp_filename, "r");
 		
@@ -237,7 +234,7 @@ void prepareFile(int socket_fd_new, char *filename)
 		if (fileSize == -1)
 		{
 			send_error404(socket_fd_new);
-			printf("File size error!\n");
+			printf("ftell error!\n");
 			return;
 		}
 		// initial buffer to store file contents
@@ -247,7 +244,7 @@ void prepareFile(int socket_fd_new, char *filename)
 		if (fseek(filePointer, 0L, SEEK_SET) != 0)
 		{
 			send_error404(socket_fd_new);
-			printf("File size error!\n");
+			printf("fseek error!\n");
 			return;
 		}
 
@@ -257,15 +254,81 @@ void prepareFile(int socket_fd_new, char *filename)
 		if (readFileLength == 0)
 		{
 			send_error404(socket_fd_new);
-			printf("File reading error!\n");
+			printf("fread error!\n");
 			return;
 		}
 
 		// end the buffer
 		fileBuffer[readFileLength] = '\0';
-		// send HTTP header to client's browser
-		createHttpMassage(socket_fd_new, temp_filename, readFileLength);
-		// send file 
+		//////////////////////////////////// send HTTP header to client's browser
+		char httpMessage[512];
+		char *status; 
+		status = S_200; //connect success and  display 200 OK!
+		
+		// get connection status
+		char *connection = "Connection: close\r\n";
+
+		// get date
+		time_t time_now;
+		struct tm* cur_tm_info;
+		time (&time_now);
+		cur_tm_info = gmtime(&time_now);
+		char time_record[52];
+		strftime(time_record, 52, "%a,%e %b %G %T GMT", cur_tm_info);
+		char date[70] = "Date: ";
+		strcat(date, time_record);
+		strcat(date, "\r\n");
+
+		// set server name
+		char *server = "Server: Jiangtao's VM \r\n";
+
+		// get last-modified time
+		struct tm* lmnow;
+		struct stat attrib;
+		stat(temp_filename, &attrib);
+		lmnow = gmtime(&(attrib.st_mtime));
+		char lmtime[52];
+		strftime(lmtime, 52, "%a, %d %b %Y %T %Z", lmnow);
+		char lastModified[70] = "Last-Modified: ";
+		strcat(lastModified, lmtime);
+		strcat(lastModified, "\r\n");
+
+		// get file content-length	
+		char Length[50] = "Content-Length: ";	
+		char len[10];
+		sprintf (len, "%d", (unsigned int)readFileLength);
+		strcat(Length, len);
+		strcat(Length, "\r\n");
+
+		// get content-type
+		char* content_type = TXT;
+		char *tmp_name = malloc(sizeof(char) * (strlen(temp_filename) + 1));
+		strcpy(tmp_name, temp_filename);
+		if (strstr(tmp_name, ".html") != NULL)
+			content_type = HTML;
+		else if (strstr(tmp_name, ".png") != NULL)
+			content_type = PNG;
+		else if (strstr(tmp_name, ".txt") != NULL)
+			content_type = TXT;
+		else if (strstr(tmp_name, ".jpg") != NULL)
+			content_type = JPG;
+		else if (strstr(tmp_name, ".gif") != NULL)
+			content_type = GIF;
+		else if (strstr(tmp_name, ".jpeg") != NULL)
+			content_type = JPEG;
+		
+		strcat(httpMessage, status);
+		strcat(httpMessage, connection);
+		strcat(httpMessage, date);
+		strcat(httpMessage, server);
+		strcat(httpMessage, lastModified);
+		strcat(httpMessage, Length);
+		strcat(httpMessage, content_type);
+		strcat(httpMessage, "\r\n\0");
+		//send http header massages
+		send(socket_fd_new, httpMessage, strlen(httpMessage), 0);
+		printf("HTTP Response Message:\n%s\n", httpMessage);
+		//send file to client
 		send(socket_fd_new, fileBuffer, readFileLength, 0);
 		printf("\"%s\" has been served to client!\n\n", temp_filename);
 	}
@@ -273,76 +336,3 @@ void prepareFile(int socket_fd_new, char *filename)
 	fclose(filePointer);
 	free(fileBuffer);
 }
-
-void createHttpMassage(int socket_fd_new, char *filename, size_t fileLength)
-{
-	char httpMessage[512];
-
-	char *status; 
-	status = S_200; //connect success and  display 200 OK!
-	
-	// get connection status
-	char *connection = "Connection: close\r\n";
-
-	// get date
-	struct tm* cur_tm_info;
-	time_t time_now;
-	time(&time_now);
-	cur_tm_info = gmtime(&time_now);
-	char time_record[52];
-	strftime(time_record, 52, "%a,%e %b %G %T GMT", cur_tm_info);
-	char date[70] = "Date: ";
-	strcat(date, time_record);
-	strcat(date, "\r\n");
-
-	// set server name
-	char *server = "Server: Jiangtao's VM \r\n";
-
-	// get last-modified time
-	struct tm* lmnow;
-	struct stat attrib;
-	stat(filename, &attrib);
-	lmnow = gmtime(&(attrib.st_mtime));
-	char lmtime[35];
-	strftime(lmtime, 35, "%a, %d %b %Y %T %Z", lmnow);
-	char lastModified[50] = "Last-Modified: ";
-	strcat(lastModified, lmtime);
-	strcat(lastModified, "\r\n");
-
-	// get file content-length	
-	char Length[50] = "Content-Length: ";	
-	char len[10];
-	sprintf (len, "%d", (unsigned int)fileLength);
-	strcat(Length, len);
-	strcat(Length, "\r\n");
-
-	// get content-type
-	char* content_type = TXT;
-    char *tmp_name = malloc(sizeof(char) * (strlen(filename) + 1));
-    strcpy(tmp_name, filename);
-    if (strstr(tmp_name, ".html") != NULL)
-        content_type = HTML;
-    else if (strstr(tmp_name, ".png") != NULL)
-        content_type = JPG;
-	else if (strstr(tmp_name, ".txt") != NULL)
-        content_type = TXT;
-    else if (strstr(tmp_name, ".jpg") != NULL)
-        content_type = JPG;
-    else if (strstr(tmp_name, ".gif") != NULL)
-        content_type = GIF;
-	else if (strstr(tmp_name, ".jpeg") != NULL)
-        content_type = JPEG;
-    
-	strcat(httpMessage, status);
-    strcat(httpMessage, connection);
-    strcat(httpMessage, date);
-    strcat(httpMessage, server);
-    strcat(httpMessage, lastModified);
-    strcat(httpMessage, Length);
-    strcat(httpMessage, content_type);
-    strcat(httpMessage, "\r\n\0");
-
-	send(socket_fd_new, httpMessage, strlen(httpMessage), 0);
-	printf("HTTP Response Message:\n%s\n", httpMessage);
-}
-
