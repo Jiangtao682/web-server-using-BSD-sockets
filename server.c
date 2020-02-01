@@ -32,7 +32,6 @@
 
 char *request_process(int);
 void prepareFile (int, char *);
-void createHttpMassage(int, char *, size_t);
 
 //send the error 404 page
 void send_error404(int socket_fd_new)
@@ -42,24 +41,41 @@ void send_error404(int socket_fd_new)
 }
 
 //substitue %20 with ' '
-void subst_space(char *filename)
+// void subst_space(char *filename)
+// {
+//     char buffer[1024] = {0};
+//     char *pointer = &buffer[0];
+//     const char *dummy = filename;
+//     for (int i=0; i< strlen(dummy); i = i+1) {
+//         const char *space_ptr = strstr(dummy, "%20");
+//         if (space_ptr == NULL) {
+//             strcpy(pointer, dummy);
+//             break;
+//         }
+//     }
+//     strcpy(filename, buffer);
+// }
+
+int ReplaceStr(char* Src, char* MatchStr, char* ReplaceStr)
 {
-    char buffer[1024] = {0};
-    char *pointer = &buffer[0];
-    const char *dummy = filename;
-    for (int i=0; i< strlen(dummy); i = i+1) {
-        const char *space_ptr = strstr(dummy, "%20");
-        if (space_ptr == NULL) {
-            strcpy(pointer, dummy);
-            break;
+        int Len;
+        char NewString[64];
+        char* Pos;
+        Pos =(char *)strstr(Src, MatchStr);
+        if( (!Pos) || (!MatchStr) )
+                return -1;
+        while( Pos )
+        {
+                memset(NewString, 0, sizeof(NewString));
+                Len = Pos - Src;
+                strncpy(NewString, Src, Len);
+                strcat(NewString, ReplaceStr);
+                strcat(NewString, Pos + strlen(MatchStr));
+                strcpy(Src, NewString);
+                Pos =(char *)strstr(Src, MatchStr);
         }
-        memcpy(pointer, dummy, space_ptr - dummy);
-        pointer += space_ptr - dummy;
-        memcpy(pointer, " ", 1);
-        pointer = pointer + 1;
-        dummy = space_ptr + 3;
-    }
-    strcpy(filename, buffer);
+        free(Pos);
+        return 0;
 }
 
 void sigchld_handler(int s)
@@ -217,7 +233,8 @@ void prepareFile(int socket_fd_new, char *filename)
 	for (int i=0; i< strlen(temp_filename); i = i+1){
 		temp_filename[i] = tolower(temp_filename[i]);
 	}
-	subst_space(temp_filename);
+	// subst_space(temp_filename);
+	ReplaceStr(temp_filename,"%20"," ");
 	FILE *filePointer = fopen(temp_filename, "r");
 		
 	if (filePointer==NULL)

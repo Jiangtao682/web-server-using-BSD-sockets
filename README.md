@@ -214,7 +214,9 @@ int main(void)
 
  https://www.binarytides.com/socket-programming-c-linux-tutorial/ 
 
- https://medium.com/from-the-scratch/http-server-what-do-you-need-to-know-to-build-a-simple-http-server-from-scratch-d1ef8945e4fa  
+ https://medium.com/from-the-scratch/http-server-what-do-you-need-to-know-to-build-a-simple-http-server-from-scratch-d1ef8945e4fa
+
+ https://blog.csdn.net/gzh0222/article/details/6644122   
 
 
 
